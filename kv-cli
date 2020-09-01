@@ -108,13 +108,13 @@ class KVCtl():
 
     def _config_load(self):
         self._config = {}
-        path = os.path.join('', *[os.environ['HOME'], '.kv-ctl'])
+        path = os.path.join('', *[os.environ['HOME'], '.kv-cli'])
 
         if os.path.exists(path):
             self._config = yaml.safe_load(open(path))
 
     def _config_write(self):
-        path = os.path.join('', *[os.environ['HOME'], '.kv-ctl'])
+        path = os.path.join('', *[os.environ['HOME'], '.kv-cli'])
         with open(path, 'w') as outfile:
             yaml.safe_dump(self._config, outfile, encoding='utf-8',
                            allow_unicode=True)
@@ -134,7 +134,7 @@ class KVCtl():
         self._config_write()
 
     def parse(self):
-        parser = argparse.ArgumentParser(description='kv-ctl')
+        parser = argparse.ArgumentParser(description='kv-cli')
         parser.add_argument('-f', '--formatter')
         parser.set_defaults(formatter="kv")
         parser.add_argument('--skip')
