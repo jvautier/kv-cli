@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from os.path import isfile, join
+from os import listdir
+import argparse
+import yaml
+import json
+import inspect
+import sys
+import os
+import glob
+import re
+
+
+class KVCtl():
+    def __init__(self):
+        self._config_load()
+
+    def _read_file(self, path, **kwargs):
+        with open(path, 'r') as myfile:
+            try:
+                data = myfile.read()
+                # do stuff
+            except:  # whatever reader errors you care about
+                data = "!!Error reading {0}".format(path)
+        return data
+
+    def _format(self, path, formatter):
+        path_list = path.split(os.sep)
+        # path_list = path.split('/')
+        # print("path_list", path_list)
+        content = self._read_file(path)
+        result = ""
+        if formatter == "path":
+            result = "{0}\n".format(path)
+        if formatter == "key":
+            result = "{0}\n".format(path_list[-1])
+        if formatter == "string":
+            result = "{0}\n".format(content)
+        if formatter == "kv":
+            result = "{0}=\"{1}\"\n".format(path_list[-1], content)
+        if formatter == "export":
+            result = "export {0}=\"{1}\"\n".format(path_list[-1], content)
+        if formatter == "yaml":
+            result = "{0}: \"{1}\"\n".format(path_list[-1], content)
+        # if formatter == "json":
+        #     result = "\"{0}\': \"{1}\",".format(path_list[-1], content)
+        # print("format result", result)
+        return result
+
+    def get_list_dir(self, path, **kwargs):
+        # print('list')
+        result = ""
+        # path = path.replace('\\', '/')
+        path_list = path.split('/')
+        path_list = list(filter(None, path_list))
+        # replace store alias by correct path
+        formatter = kwargs.get('formatter')
+        current_store_alias = ""
+        for store_alias in self._config.get('mounts'):
+            if store_alias == path_list[0]:
+                current_store_alias = store_alias
+                path_list[0] = self._config.get('mounts')[store_alias]
+                path = os.path.join('', *path_list)
+        # path = path.replace('\\', '/')
+        # print(path)
+        for filename in glob.iglob(path, recursive=True):
+            # if os.path.isfile(filename):
+            #     print(filename)
+            if os.path.isdir(filename):
+                if current_store_alias != '':
+                    result += filename.replace(self._config.get('mounts')
+                                               [current_store_alias], current_store_alias).replace('\\', '/') + '\n'
+                else:
+                    result += filename + '\n'
+
+            # if filename != path:
+
+        return result
+
+    def get_value(self, path, **kwargs):
+        # path_list = path.split(os.sep)
+        path_list = path.split('/')
+        path_list = list(filter(None, path_list))
+        # replace store alias by correct path
+        formatter = kwargs.get('formatter')
+        for store_alias in self._config.get('mounts'):
+            if store_alias == path_list[0]:
+                path_list[0] = self._config.get('mounts')[store_alias]
+                path = os.path.join('', *path_list)
+        result = ""
+
+        if os.path.exists(path) and os.path.isfile(path):
+            skipping = kwargs.get('skip') and bool(
+                re.match(r"{0}".format(kwargs.get('skip')), path))
+            if not skipping:
+                result += self._format(path, formatter)
+        else:
+            for filename in glob.iglob(path, recursive=True):
+                if filename != path:
+                    result += self.get_value(filename, **kwargs)
+
+        return result
+
+    def set_value(self, key, value, **kwargs):
+        print("set")
+
+    def _config_load(self):
+        self._config = {}
+        path = os.path.join('', *[os.environ['HOME'], '.kv-ctl'])
+
+        if os.path.exists(path):
+            self._config = yaml.safe_load(open(path))
+
+    def _config_write(self):
+        path = os.path.join('', *[os.environ['HOME'], '.kv-ctl'])
+        with open(path, 'w') as outfile:
+            yaml.safe_dump(self._config, outfile, encoding='utf-8',
+                           allow_unicode=True)
+
+    def get_config(self, **kwargs):
+        return yaml.dump(self._config)
+
+    def mounts_add(self, path, alias, **kwargs):
+        if not self._config.get('mounts'):
+            self._config['mounts'] = {}
+        self._config['mounts'][alias] = path
+        self._config_write()
+
+    def mounts_rm(self, alias, **kwargs):
+        if self._config.get('mounts').get(alias):
+            del self._config.get('mounts')[alias]
+        self._config_write()
+
+    def parse(self):
+        parser = argparse.ArgumentParser(description='kv-ctl')
+        parser.add_argument('-f', '--formatter')
+        parser.set_defaults(formatter="kv")
+        parser.add_argument('--skip')
+        parser.set_defaults(
+            skip='.+PRIVATE_KEY|.+PUBLIC_KEY|.+_GPG_.+|.+.key|.+.pub|.+.asc|.+_rsa|.+.ppk')
+        parser.set_defaults(depth=1)
+        actions = parser.add_subparsers(
+            title="action",
+            description="action desc",
+            prog="prog",
+            dest="action",
+            help="action help"
+        )
+
+        config_action = actions.add_parser("config")
+        config_action.set_defaults(func=self.get_config)
+
+        list_dir_action = actions.add_parser("list")
+        list_dir_action.add_argument('-p', '--path', required=True)
+        list_dir_action.set_defaults(func=self.get_list_dir)
+
+        get_action = actions.add_parser("get")
+        get_action.add_argument('-p', '--path', required=True)
+        get_action.set_defaults(func=self.get_value)
+
+        mounts_parser = actions.add_parser('mounts')
+        mounts_action = mounts_parser.add_subparsers(
+            dest='action')
+        mounts_add_action = mounts_action.add_parser('add', help='add')
+        mounts_add_action.add_argument('-p', '--path', required=True)
+        mounts_add_action.add_argument('-a', '--alias', required=True)
+        mounts_add_action.set_defaults(func=self.mounts_add)
+
+        mounts_rm_action = mounts_action.add_parser('rm', help='add')
+        mounts_rm_action.add_argument('-a', '--alias', required=True)
+        mounts_rm_action.set_defaults(func=self.mounts_rm)
+        args = parser.parse_args(sys.argv[1:])
+
+        if args.action == None:
+            parser.print_help()
+            exit(1)
+
+        argspec = inspect.getfullargspec(args.func)
+        if argspec.varkw or argspec.defaults or argspec.kwonlyargs or argspec.kwonlydefaults:
+            # convert args to a dictionary
+            args_for_func = vars(args)
+        else:
+            # get a subset of the dictionary containing just the arguments of func
+            args_for_func = {k: getattr(args, k) for k in argspec.args}
+
+        result = args.func(**args_for_func)
+        if result != None:
+            print(result)
+
+
+def main():
+    ctl = KVCtl()
+    ctl.parse()
+
+
+if __name__ == '__main__':
+    main()
