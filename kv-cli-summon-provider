@@ -113,13 +113,23 @@ class KVCli():
             print(json.dumps(result))
 
 
-def main():
-    ctl = KVCli()
-    ctl.parse()
-
 def write_and_flush(pipe, message):
     pipe.write(message)
     pipe.flush()
 
 if __name__ == '__main__':
-    main()
+    ctl = KVCli()
+    
+    if len(sys.argv) <= 1:
+        write_and_flush(sys.stderr, 'No variable was provided.')
+        sys.exit(1)
+
+    variable = sys.argv[1]
+
+    result = ctl.get_value(variable)
+    value = result[0].get('Value')
+    if value is None:
+        write_and_flush(sys.stderr, '{} could not be retrieved'.format(variable))
+        sys.exit(1)
+
+    write_and_flush(sys.stdout, value)
