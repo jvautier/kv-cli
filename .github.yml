@@ -1,0 +1,9 @@
+---
+fullname: jvautier/kv-cli
+description: key-value cli to store configs and secrets
+tags:
+  - python
+  - cli
+  - secrets
+  - configs
+github: {}
